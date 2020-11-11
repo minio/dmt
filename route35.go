@@ -239,10 +239,6 @@ func main() {
 		RootCAs: rootCAs,
 	}, rest.DefaultTimeout)()
 
-	proxy := &httputil.ReverseProxy{
-		Transport: transport,
-	}
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		accessKey, err := getReqAccessKey(r, "") // TODO support region
 		if err != nil {
@@ -250,21 +246,29 @@ func main() {
 			return
 		}
 
-		r.Header.Add("X-Forwarded-Host", r.Host)
-		r.Header.Add("X-Real-IP", r.RemoteAddr)
-		if secureBackend {
-			r.URL.Scheme = "https"
-		} else {
-			r.URL.Scheme = "http"
+		director := func(r *http.Request) {
+			r.Header.Add("X-Forwarded-Host", r.Host)
+			r.Header.Add("X-Real-IP", r.RemoteAddr)
+			if secureBackend {
+				r.URL.Scheme = "https"
+			} else {
+				r.URL.Scheme = "http"
+			}
+
+			tenantHost, ok := tenantAccessMapping[accessKey]
+			if !ok {
+				http.Error(w, fmt.Sprintf("no tenant found for accessKey %s", accessKey), http.StatusBadRequest)
+				return
+			}
+
+			r.URL.Host = tenantHost
 		}
 
-		tenantHost, ok := tenantAccessMapping[accessKey]
-		if !ok {
-			http.Error(w, fmt.Sprintf("no tenant found for accessKey %s", accessKey), http.StatusBadRequest)
-			return
+		proxy := &httputil.ReverseProxy{
+			Director:  director,
+			Transport: transport,
 		}
 
-		r.URL.Host = tenantHost
 		proxy.ServeHTTP(w, r)
 	})
 
