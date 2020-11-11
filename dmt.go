@@ -173,6 +173,17 @@ func runInformer() error {
 	return nil
 }
 
+var secureCipherSuites = []uint16{
+	tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+	tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+	tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+}
+
+var secureCurves = []tls.CurveID{tls.X25519, tls.CurveP256}
+
 func main() {
 	flag.Parse()
 
@@ -203,6 +214,12 @@ func main() {
 
 	transport := newInternodeHTTPTransport(&tls.Config{
 		RootCAs: rootCAs,
+		// TLS hardening
+		PreferServerCipherSuites: true,
+		MinVersion:               tls.VersionTLS12,
+		NextProtos:               []string{"h2", "http/1.1"},
+		CipherSuites:             secureCipherSuites,
+		CurvePreferences:         secureCurves,
 	}, rest.DefaultTimeout)()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

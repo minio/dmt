@@ -60,7 +60,7 @@ spec:
             defaultMode: 420
             sources:
               - configMap:
-                  name: dmt-configuration
+                  name: dmt-config
               - secret:
                   name: orchestrator-cluster-certs
                   items:
