@@ -16,7 +16,7 @@ ENV CGO_ENABLED=0
 
 RUN go build -trimpath -ldflags "-w -s" -a -o dmt .
 
-FROM alpine
+FROM scratch
 
 MAINTAINER MinIO Development "dev@min.io"
 
