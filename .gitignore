@@ -1,2 +1,30 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.DS_Store
+*.swp
+*.orig
+
+# Test binary, build with `go test -c`
+*.test
+
+.idea/
+vendor/
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Ignore executables
+target/
 route35
+!route35/
+
+dist/
+
+# Ignore VsCode files
+.vscode/
+*.code-workspace
 *~
