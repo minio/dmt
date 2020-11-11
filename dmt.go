@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -14,17 +14,15 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/minio/dmt/pkg/k8s"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/rest"
-	"github.com/minio/minio/pkg/auth"
 	"golang.org/x/net/http2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	k8srest "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -66,20 +64,20 @@ func ParsePublicCertFile(certFile string) (x509Certs []*x509.Certificate, err er
 }
 
 var (
-	caCert    string
-	tlsCert   string
-	tlsKey    string
-	routeFile string
+	caCert  string
+	tlsCert string
+	tlsKey  string
 
-	globalDNSCache *xhttp.DNSCache
+	globalDNSCache        *xhttp.DNSCache
+	globalTenantAccessMap *tenantAccessMap
 )
 
 func init() {
 	flag.StringVar(&tlsKey, "tls-key", "/etc/dmt/tls.key", "TLS key")
 	flag.StringVar(&tlsCert, "tls-cert", "/etc/dmt/tls.crt", "TLS certificate")
 	flag.StringVar(&caCert, "ca-cert", "/etc/dmt/ca.crt", "CA certificates")
-	flag.StringVar(&routeFile, "routes", "/etc/dmt/routes.json", "default access routes file")
 	globalDNSCache = xhttp.NewDNSCache(3*time.Second, 10*time.Second)
+	globalTenantAccessMap = newTenantAccessMap()
 }
 
 func newInternodeHTTPTransport(tlsConfig *tls.Config, dialTimeout time.Duration) func() *http.Transport {
@@ -109,98 +107,70 @@ func newInternodeHTTPTransport(tlsConfig *tls.Config, dialTimeout time.Duration)
 	}
 }
 
-var tenantAccessMapping = map[string]string{}
-
-// isValidRegion - verify if incoming region value is valid with configured Region.
-func isValidRegion(reqRegion string, confRegion string) bool {
-	if confRegion == "" {
-		return true
-	}
-	if confRegion == "US" {
-		confRegion = ""
-	}
-	// Some older s3 clients set region as "US" instead of
-	// globalMinioDefaultRegion, handle it.
-	if reqRegion == "US" {
-		reqRegion = ""
-	}
-	return reqRegion == confRegion
-}
-
-// parse credentialHeader string into its structured form.
-func parseCredentialHeader(credElement string, region string) (accessKey string, err error) {
-	creds := strings.SplitN(strings.TrimSpace(credElement), "=", 2)
-	if len(creds) != 2 {
-		return "", errors.New("error missing fields")
-	}
-	if creds[0] != "Credential" {
-		return "", errors.New("missing Credential tag")
-	}
-	credElements := strings.Split(strings.TrimSpace(creds[1]), "/")
-	if len(credElements) < 5 {
-		return "", errors.New("malformed Credential tag")
-	}
-	accessKey = strings.Join(credElements[:len(credElements)-4], "/") // The access key may contain one or more `/`
-	if !auth.IsAccessKeyValid(accessKey) {
-		return "", errors.New("invalid access key id")
-	}
-
-	credElements = credElements[len(credElements)-4:]
-	if _, err = time.Parse(yyyymmdd, credElements[0]); err != nil {
-		return accessKey, fmt.Errorf("invalid credential date %s", err)
-	}
-
-	// Region is set to be empty, we use whatever was sent by the
-	// request and proceed further. This is a work-around to address
-	// an important problem for ListBuckets() getting signed with
-	// different regions.
-	if region == "" {
-		region = credElements[1]
-	}
-
-	// Should validate region, only if region is set.
-	if !isValidRegion(credElements[1], region) {
-		return accessKey, errors.New("invalid region")
-
-	}
-	switch serviceType(credElements[2]) {
-	case serviceSTS:
-	case serviceS3:
-	default:
-		return accessKey, fmt.Errorf("invalid service type %s", credElements[2])
-	}
-	if credElements[3] != "aws4_request" {
-		return accessKey, errors.New("invalid AWS signature version")
-	}
-	return accessKey, nil
-}
-
-type serviceType string
-
 const (
-	serviceS3  serviceType = "s3"
-	serviceSTS serviceType = "sts"
+	dmtConfigMapName = "dmt-config"
+	dmtConfigMapKey  = "routes.json"
 )
 
-// AWS Signature Version '4' constants.
-const (
-	signV4Algorithm = "AWS4-HMAC-SHA256"
-	iso8601Format   = "20060102T150405Z"
-	yyyymmdd        = "20060102"
-)
-
-func getReqAccessKey(r *http.Request, region string) (string, error) {
-	accessKey, err := parseCredentialHeader("Credential="+r.URL.Query().Get(xhttp.AmzCredential), region)
-	if err != nil {
-		// Strip off the Algorithm prefix.
-		v4Auth := strings.TrimPrefix(r.Header.Get("Authorization"), signV4Algorithm)
-		authFields := strings.Split(strings.TrimSpace(v4Auth), ",")
-		if len(authFields) != 3 {
-			return accessKey, errors.New("missing expected fields")
+func uponConfigUpdate(oldObj interface{}, newObj interface{}) {
+	cfgMap := newObj.(*v1.ConfigMap)
+	if cfgMap.ObjectMeta.Name == dmtConfigMapName {
+		rules, ok := cfgMap.Data[dmtConfigMapKey]
+		if !ok {
+			return
 		}
-		accessKey, err = parseCredentialHeader(authFields[0], region)
+		var kv = map[string]string{}
+		if err := json.Unmarshal([]byte(rules), &kv); err != nil {
+			log.Println("invalid dmt configuration, ignoring and proceeding", err)
+			return
+		}
+		globalTenantAccessMap.Update(kv)
+		log.Println("dmt configuration updated successfully")
 	}
-	return accessKey, err
+}
+
+func runInformer() error {
+	// We assume'dmt' is running inside a k8s pod and extract the
+	// current namespace from the /var/run/secrets/kubernetes.io/serviceaccount/namespace file
+	namespace := func() string {
+		ns, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+		if err != nil {
+			return "default"
+		}
+		return string(ns)
+	}()
+
+	k8sConfig, err := k8srest.InClusterConfig()
+	if err != nil {
+		return err
+	}
+
+	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	factory := informers.NewSharedInformerFactoryWithOptions(k8sClient, 0, informers.WithNamespace(namespace))
+	log.Println("Start dmt configMap informer on namespace", namespace)
+
+	cfgMapInformer := factory.Core().V1().ConfigMaps().Informer()
+	cfgMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: uponConfigUpdate,
+	})
+
+	go cfgMapInformer.Run(ctx.Done())
+
+	// wait for the initial synchronization of the local cache.
+	if !cache.WaitForCacheSync(ctx.Done(), cfgMapInformer.HasSynced) {
+		return fmt.Errorf("Failed to sync")
+	}
+
+	<-ctx.Done()
+
+	return nil
 }
 
 func main() {
@@ -208,22 +178,13 @@ func main() {
 
 	defer globalDNSCache.Stop()
 
-	r, err := os.Open(routeFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	d := json.NewDecoder(r)
-	if err = d.Decode(&tenantAccessMapping); err != nil {
-		log.Fatal(err)
-	}
-
-	r.Close()
-
 	certs, err := ParsePublicCertFile(caCert)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Start k8s informer
+	go runInformer()
 
 	secureBackend := len(caCert) > 0
 
@@ -251,20 +212,21 @@ func main() {
 			return
 		}
 
+		// Verify if access key exists
+		tenantHost, ok := globalTenantAccessMap.Get(accessKey)
+		if !ok {
+			http.Error(w, fmt.Sprintf("access key '%s' does not exist", accessKey), http.StatusBadRequest)
+			return
+		}
+
 		director := func(r *http.Request) {
 			r.Header.Add("X-Forwarded-Host", r.Host)
 			r.Header.Add("X-Real-IP", r.RemoteAddr)
+
 			if secureBackend {
 				r.URL.Scheme = "https"
 			} else {
 				r.URL.Scheme = "http"
-			}
-
-			tenantHost, ok := tenantAccessMapping[accessKey]
-			if !ok {
-				log.Println(fmt.Sprintf("No tenant found for accessKey %s", accessKey))
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
 			}
 
 			r.URL.Host = tenantHost
@@ -277,37 +239,6 @@ func main() {
 
 		proxy.ServeHTTP(w, r)
 	})
-
-	doneCh := make(chan struct{})
-	go func() {
-		defer close(doneCh)
-		k8sConfig, err := k8s.GetK8sConfig()
-		if err != nil {
-			panic(err)
-		}
-		k8sClient, err := kubernetes.NewForConfig(k8sConfig)
-		if err != nil {
-			panic(err)
-		}
-		factory := informers.NewSharedInformerFactory(k8sClient, 0)
-		log.Println("Start informer")
-		cfgMapInformer := factory.Core().V1().ConfigMaps().Informer()
-		cfgMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
-				cfgMap := newObj.(*v1.ConfigMap)
-				if cfgMap.ObjectMeta.Name == getDMTConfigMapName() && cfgMap.ObjectMeta.Namespace == getDMTNamespace() {
-					if rules, ok := cfgMap.Data["routes.json"]; ok {
-						if err = json.Unmarshal([]byte(rules), &tenantAccessMapping); err != nil {
-							log.Fatal(err)
-						}
-						log.Println("dmt configuration updated")
-					}
-				}
-			},
-		})
-		go cfgMapInformer.Run(doneCh)
-		<-doneCh
-	}()
 
 	log.Fatal(http.ListenAndServeTLS(":8443", tlsCert, tlsKey, nil))
 }
