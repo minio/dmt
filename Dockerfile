@@ -1,6 +1,6 @@
 FROM scratch
 MAINTAINER MinIO Development "dev@min.io"
 EXPOSE 8443
-COPY reverse /reverse
+COPY route35 /route35
 
-ENTRYPOINT ["/reverse"]
+ENTRYPOINT ["/route35"]

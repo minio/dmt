@@ -1,4 +1,4 @@
-module github.com/minio/reverse
+module github.com/minio/route35
 
 go 1.15
 
