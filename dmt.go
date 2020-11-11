@@ -17,10 +17,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/minio/dmt/pkg/k8s"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/rest"
 	"github.com/minio/minio/pkg/auth"
 	"golang.org/x/net/http2"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 // ParsePublicCertFile - parses public cert into its *x509.Certificate equivalent.
@@ -257,7 +262,8 @@ func main() {
 
 			tenantHost, ok := tenantAccessMapping[accessKey]
 			if !ok {
-				http.Error(w, fmt.Sprintf("no tenant found for accessKey %s", accessKey), http.StatusBadRequest)
+				log.Println(fmt.Sprintf("No tenant found for accessKey %s", accessKey))
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 
@@ -271,6 +277,37 @@ func main() {
 
 		proxy.ServeHTTP(w, r)
 	})
+
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		k8sConfig, err := k8s.GetK8sConfig()
+		if err != nil {
+			panic(err)
+		}
+		k8sClient, err := kubernetes.NewForConfig(k8sConfig)
+		if err != nil {
+			panic(err)
+		}
+		factory := informers.NewSharedInformerFactory(k8sClient, 0)
+		log.Println("Start informer")
+		cfgMapInformer := factory.Core().V1().ConfigMaps().Informer()
+		cfgMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+				cfgMap := newObj.(*v1.ConfigMap)
+				if cfgMap.ObjectMeta.Name == getDMTConfigMapName() && cfgMap.ObjectMeta.Namespace == getDMTNamespace() {
+					if rules, ok := cfgMap.Data["routes.json"]; ok {
+						if err = json.Unmarshal([]byte(rules), &tenantAccessMapping); err != nil {
+							log.Fatal(err)
+						}
+						log.Println("dmt configuration updated")
+					}
+				}
+			},
+		})
+		go cfgMapInformer.Run(doneCh)
+		<-doneCh
+	}()
 
 	log.Fatal(http.ListenAndServeTLS(":8443", tlsCert, tlsKey, nil))
 }

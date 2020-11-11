@@ -14,7 +14,7 @@ WORKDIR /go/src/github.com/minio/dmt/
 
 ENV CGO_ENABLED=0
 
-RUN go build -trimpath -ldflags "-w -s" -a -o dmt dmt.go
+RUN go build -trimpath -ldflags "-w -s" -a -o dmt .
 
 FROM alpine
 

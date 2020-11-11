@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: dmt
+  name: dmt
+  namespace: default
+spec:
+  ports:
+    - name: http
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app: dmt
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: dmt
+  name: dmt
+  namespace: default
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: dmt
+      type: dmt
+  template:
+    metadata:
+      labels:
+        app: dmt
+        type: dmt
+      namespace: default
+    spec:
+      serviceAccount: nginx-user
+      serviceAccountName: nginx-user
+      containers:
+        - image: minio/dmt:dev
+          imagePullPolicy: IfNotPresent
+          name: dmt
+          ports:
+            - containerPort: 8443
+              name: http
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /etc/dmt
+              name: dmt-configuration-tls
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        env: compute
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      volumes:
+        - name: dmt-configuration-tls
+          projected:
+            defaultMode: 420
+            sources:
+              - configMap:
+                  name: dmt-configuration
+              - secret:
+                  name: orchestrator-cluster-certs
+                  items:
+                    - key: tls.crt
+                      path: tls.crt
+                    - key: tls.key
+                      path: tls.key
+                    - key: ca.crt
+                      path: ca.crt
