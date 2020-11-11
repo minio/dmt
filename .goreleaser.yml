@@ -1,6 +1,6 @@
 # This is an example goreleaser.yaml file with some sane defaults.
 # Make sure to check the documentation at http://goreleaser.com
-project_name: route35
+project_name: dmt
 
 before:
   hooks:
@@ -36,5 +36,5 @@ dockers:
     goarch: amd64
     dockerfile: Dockerfile.release
     image_templates:
-      - "minio/route35:{{ .Tag }}"
-      - "minio/route35:latest"
+      - "minio/dmt:{{ .Tag }}"
+      - "minio/dmt:latest"

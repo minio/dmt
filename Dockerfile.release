@@ -5,6 +5,6 @@ MAINTAINER MinIO Development "dev@min.io"
 EXPOSE 8443
 
 RUN apk update && apk add --no-cache ca-certificates
-COPY route35 /route35
+COPY dmt /dmt
 
-ENTRYPOINT ["/route35"]
+ENTRYPOINT ["/dmt"]

@@ -19,8 +19,8 @@ vendor/
 
 # Ignore executables
 target/
-route35
-!route35/
+dmt
+!dmt/
 
 dist/
 

@@ -70,10 +70,10 @@ var (
 )
 
 func init() {
-	flag.StringVar(&tlsKey, "tls-key", "/etc/route35/tls.key", "TLS key")
-	flag.StringVar(&tlsCert, "tls-cert", "/etc/route35/tls.crt", "TLS certificate")
-	flag.StringVar(&caCert, "ca-cert", "/etc/route35/ca.crt", "CA certificates")
-	flag.StringVar(&routeFile, "routes", "/etc/route35/routes.json", "default access routes file")
+	flag.StringVar(&tlsKey, "tls-key", "/etc/dmt/tls.key", "TLS key")
+	flag.StringVar(&tlsCert, "tls-cert", "/etc/dmt/tls.crt", "TLS certificate")
+	flag.StringVar(&caCert, "ca-cert", "/etc/dmt/ca.crt", "CA certificates")
+	flag.StringVar(&routeFile, "routes", "/etc/dmt/routes.json", "default access routes file")
 	globalDNSCache = xhttp.NewDNSCache(3*time.Second, 10*time.Second)
 }
 

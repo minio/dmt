@@ -1,15 +1,15 @@
-# route35
+# dmt
 
-## Usage `route35`
+## Usage `dmt`
 
 ```
-Usage of ./route35:
+Usage of ./dmt:
   -routes string
-        default access routes file (default "/etc/route35/routes.json")
+        default access routes file (default "/etc/dmt/routes.json")
   -ca-cert string
-        CA certificates (default "/etc/route35/ca.crt")
+        CA certificates (default "/etc/dmt/ca.crt")
   -tls-cert string
-        TLS certificate (default "/etc/route35/tls.crt")
+        TLS certificate (default "/etc/dmt/tls.crt")
   -tls-key string
-        TLS key (default "/etc/route35/tls.key")
+        TLS key (default "/etc/dmt/tls.key")
 ```

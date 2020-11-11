@@ -1,4 +1,4 @@
-module github.com/minio/route35
+module github.com/minio/dmt
 
 go 1.15
 
