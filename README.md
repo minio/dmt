@@ -1,4 +1,4 @@
-# dmt
+# Direct MinIO Tunnel
 
 ## Usage `dmt`
 
