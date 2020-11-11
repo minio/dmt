@@ -10,7 +10,7 @@ default: dmt
 .PHONY: dmt
 dmt:
 	@echo "Building dmt binary to './dmt'"
-	@(GO111MODULE=on CGO_ENABLED=0 go build -trimpath --tags=kqueue --ldflags "-s -w" -o dmt ./dmt.go)
+	@(GO111MODULE=on CGO_ENABLED=0 go build -trimpath --tags=kqueue --ldflags "-s -w" -o dmt .)
 
 getdeps:
 	@mkdir -p ${GOPATH}/bin
