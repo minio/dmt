@@ -61,19 +61,19 @@ func ParsePublicCertFile(certFile string) (x509Certs []*x509.Certificate, err er
 }
 
 var (
-	caCert  string
-	tlsCert string
-	tlsKey  string
-	backend string
+	caCert    string
+	tlsCert   string
+	tlsKey    string
+	routeFile string
 
 	globalDNSCache *xhttp.DNSCache
 )
 
 func init() {
-	flag.StringVar(&caCert, "ca-cert", "/etc/nginx/ssl/ca.crt", "CA certificates")
-	flag.StringVar(&tlsKey, "tls-key", "/etc/nginx/ssl/tls.key", "TLS key")
-	flag.StringVar(&tlsCert, "tls-cert", "/etc/nginx/ssl/tls.crt", "TLS certificate")
-	flag.StringVar(&backend, "backend", "/etc/default/reverse.json", "MinIO deployment file")
+	flag.StringVar(&tlsKey, "tls-key", "/etc/route35/tls.key", "TLS key")
+	flag.StringVar(&tlsCert, "tls-cert", "/etc/route35/tls.crt", "TLS certificate")
+	flag.StringVar(&caCert, "ca-cert", "/etc/route35/ca.crt", "CA certificates")
+	flag.StringVar(&routeFile, "routes", "/etc/route35/routes.json", "default access routes file")
 	globalDNSCache = xhttp.NewDNSCache(3*time.Second, 10*time.Second)
 }
 
@@ -203,7 +203,7 @@ func main() {
 
 	defer globalDNSCache.Stop()
 
-	r, err := os.Open(backend)
+	r, err := os.Open(routeFile)
 	if err != nil {
 		log.Fatal(err)
 	}
