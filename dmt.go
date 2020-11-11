@@ -45,7 +45,7 @@ func ParsePublicCertFile(certFile string) (x509Certs []*x509.Certificate, err er
 	for len(current) > 0 {
 		var pemBlock *pem.Block
 		if pemBlock, current = pem.Decode(current); pemBlock == nil {
-			return nil, fmt.Errorf("Could not read PEM block from file %s", certFile)
+			return nil, fmt.Errorf("could not read PEM block from file %s", certFile)
 		}
 
 		var x509Cert *x509.Certificate
@@ -57,7 +57,7 @@ func ParsePublicCertFile(certFile string) (x509Certs []*x509.Certificate, err er
 	}
 
 	if len(x509Certs) == 0 {
-		return nil, fmt.Errorf("Empty public certificate file %s", certFile)
+		return nil, fmt.Errorf("empty public certificate file %s", certFile)
 	}
 
 	return x509Certs, nil
@@ -165,7 +165,7 @@ func runInformer() error {
 
 	// wait for the initial synchronization of the local cache.
 	if !cache.WaitForCacheSync(ctx.Done(), cfgMapInformer.HasSynced) {
-		return fmt.Errorf("Failed to sync")
+		return fmt.Errorf("failed to sync")
 	}
 
 	<-ctx.Done()

@@ -22,7 +22,7 @@ func (ta *tenantAccessMap) Update(newKV map[string]string) {
 	}
 }
 
-func (ta tenantAccessMap) Get(k string) (v string, ok bool) {
+func (ta *tenantAccessMap) Get(k string) (v string, ok bool) {
 	ta.RLock()
 	defer ta.RUnlock()
 	v, ok = ta.KV[k]

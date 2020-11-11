@@ -1,6 +1,6 @@
 module github.com/minio/dmt
 
-go 1.15
+go 1.14
 
 require (
 	github.com/kr/text v0.2.0 // indirect
