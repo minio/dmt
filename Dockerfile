@@ -14,7 +14,7 @@ WORKDIR /go/src/github.com/minio/route35/
 
 ENV CGO_ENABLED=0
 
-RUN go build -ldflags "-w -s" -a -o route35 route35.go
+RUN go build -trimpath -ldflags "-w -s" -a -o route35 route35.go
 
 FROM alpine
 
