@@ -37,6 +37,7 @@ import (
 	"github.com/minio/minio/cmd/rest"
 	"golang.org/x/net/http2"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	k8srest "k8s.io/client-go/rest"
@@ -129,6 +130,16 @@ const (
 	dmtConfigMapKey  = "routes.json"
 )
 
+func loadConfiguration(rules string) error {
+	var kv = map[string]string{}
+	if err := json.Unmarshal([]byte(rules), &kv); err != nil {
+		return err
+	}
+	globalTenantAccessMap.Update(kv)
+	log.Println("dmt configuration updated successfully")
+	return nil
+}
+
 func uponConfigUpdate(oldObj interface{}, newObj interface{}) {
 	cfgMap := newObj.(*v1.ConfigMap)
 	if cfgMap.ObjectMeta.Name == dmtConfigMapName {
@@ -136,27 +147,39 @@ func uponConfigUpdate(oldObj interface{}, newObj interface{}) {
 		if !ok {
 			return
 		}
-		var kv = map[string]string{}
-		if err := json.Unmarshal([]byte(rules), &kv); err != nil {
-			log.Println("invalid dmt configuration, ignoring and proceeding", err)
-			return
-		}
-		globalTenantAccessMap.Update(kv)
-		log.Println("dmt configuration updated successfully")
+		loadConfiguration(rules)
 	}
 }
 
-func runInformer(k8sClient *kubernetes.Clientset) {
+func getNamespace() string {
 	// We assume'dmt' is running inside a k8s pod and extract the
 	// current namespace from the /var/run/secrets/kubernetes.io/serviceaccount/namespace file
-	namespace := func() string {
+	return func() string {
 		ns, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 		if err != nil {
 			return "default"
 		}
 		return string(ns)
 	}()
+}
 
+var namespace = getNamespace()
+
+func loadTenantAccessMap(k8sClient *kubernetes.Clientset) error {
+	cfgMap, err := k8sClient.CoreV1().ConfigMaps(namespace).Get(dmtConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if _, ok := cfgMap.Data[dmtConfigMapKey]; !ok {
+		return fmt.Errorf("missing %s from config map, please check your deployment config", dmtConfigMapKey)
+	}
+	if err := loadConfiguration(cfgMap.Data[dmtConfigMapKey]); err != nil {
+		log.Println("Invalid dmt configuration, ignoring and proceeding", err)
+	}
+	return nil
+}
+
+func runInformer(k8sClient *kubernetes.Clientset) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -217,6 +240,11 @@ func main() {
 
 	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Load rules for the first tme
+	if err := loadTenantAccessMap(k8sClient); err != nil {
 		log.Fatal(err)
 	}
 

@@ -59,8 +59,6 @@ spec:
           projected:
             defaultMode: 420
             sources:
-              - configMap:
-                  name: dmt-config
               - secret:
                   name: dmt-certs
                   items:
