@@ -11,7 +11,7 @@ require (
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c // indirect
 	k8s.io/api v0.16.4
-	k8s.io/apimachinery v0.17.0 // indirect
+	k8s.io/apimachinery v0.17.0
 	k8s.io/client-go v0.16.4
 	k8s.io/utils v0.0.0-20190923111123-69764acb6e8e // indirect
 )
