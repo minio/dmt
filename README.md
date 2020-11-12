@@ -25,7 +25,7 @@ TAG=minio/dmt:dev make docker
 When deploying to `kubernetes`, `dmt` requires a configmap with the name `dmt-config` to exists in the same namespace `dmt` is running, you can create the configmap using the following commands:
 
 ```$bash
-echo "{}" > routes.json
+echo "{\"version\": \"1\", \"routes\": {}}" > routes.json
 kubectl creat cm dmt-config --from-file=routes.json
 ```
 
