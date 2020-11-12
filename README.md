@@ -17,13 +17,12 @@ Usage of ./dmt:
 For development and local testing you can build new docker image via `make`
 
 ```$bash
-TAG=minio/dmt:dev make docke
+TAG=minio/dmt:dev make docker
 ```
 
 ## Kubernetes
 
-When deploying to `Kubernetes`, `dmt` requires a configmap with the name `dmt-config` to exists in the same namespace `dmt` is
-running, you can create the configmap using the following commands:
+When deploying to `kubernetes`, `dmt` requires a configmap with the name `dmt-config` to exists in the same namespace `dmt` is running, you can create the configmap using the following commands:
 
 ```$bash
 echo "{}" > routes.json
@@ -42,17 +41,19 @@ Deploy `dmt`
 kubectl apply -f k8s/examples/dmt.yaml
 ```
 
-Your application can start pushing k/v to the `dmt-config` configmap in JSON format and `dmt` will react to those changes
-via k8s informers.
+Your application can start pushing k/v to the `dmt-config` configmap in JSON format and `dmt` will react to those changes via k8s informers.
 
 ### routes.json example
 
 ```json
 {
-  "0HHZW0BSUIK3TGCF": "backend-1:9000",
-  "1OIGLFDMYMWIJCFV": "backend-2:9000",
-  "2S2UPSUO4L4XMTU0": "backend-3:9000",
-  "4103GYZD1OFNTL3Y": "backend-4:9000",
-  "4QW2BNRBPGSUP24Z": "backend-5:9000"
+    "version": "1",
+    "routes": {
+        "0HHZW0BSUIK3TGCF": "backend-1:9000",
+        "1OIGLFDMYMWIJCFV": "backend-2:9000",
+        "2S2UPSUO4L4XMTU0": "backend-3:9000",
+        "4103GYZD1OFNTL3Y": "backend-4:9000",
+        "4QW2BNRBPGSUP24Z": "backend-5:9000"
+    }
 }
 ```
