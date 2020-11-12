@@ -130,14 +130,12 @@ const (
 	dmtConfigMapKey  = "routes.json"
 )
 
-func loadConfiguration(rules string) error {
-	var kv = map[string]string{}
-	if err := json.Unmarshal([]byte(rules), &kv); err != nil {
-		return err
+func loadConfiguration(rules string) (kv map[string]string, err error) {
+	kv = map[string]string{}
+	if err = json.Unmarshal([]byte(rules), &kv); err != nil {
+		return nil, err
 	}
-	globalTenantAccessMap.Update(kv)
-	log.Println("dmt configuration updated successfully")
-	return nil
+	return kv, nil
 }
 
 func uponConfigUpdate(oldObj interface{}, newObj interface{}) {
@@ -147,7 +145,12 @@ func uponConfigUpdate(oldObj interface{}, newObj interface{}) {
 		if !ok {
 			return
 		}
-		loadConfiguration(rules)
+		kv, err := loadConfiguration(rules)
+		if err != nil {
+			log.Printf("failed to load rules from %s: (%s)\n", dmtConfigMapKey, err)
+			return
+		}
+		globalTenantAccessMap.Update(kv)
 	}
 }
 
@@ -165,18 +168,16 @@ func getNamespace() string {
 
 var namespace = getNamespace()
 
-func loadTenantAccessMap(k8sClient *kubernetes.Clientset) error {
+func loadTenantAccessMap(k8sClient *kubernetes.Clientset) (map[string]string, error) {
 	cfgMap, err := k8sClient.CoreV1().ConfigMaps(namespace).Get(dmtConfigMapName, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if _, ok := cfgMap.Data[dmtConfigMapKey]; !ok {
-		return fmt.Errorf("missing %s from config map, please check your deployment config", dmtConfigMapKey)
+	v, ok := cfgMap.Data[dmtConfigMapKey]
+	if !ok {
+		return nil, fmt.Errorf("missing %s from config map, please check your deployment config", dmtConfigMapKey)
 	}
-	if err := loadConfiguration(cfgMap.Data[dmtConfigMapKey]); err != nil {
-		log.Println("Invalid dmt configuration, ignoring and proceeding", err)
-	}
-	return nil
+	return loadConfiguration(v)
 }
 
 func runInformer(k8sClient *kubernetes.Clientset) {
@@ -244,9 +245,11 @@ func main() {
 	}
 
 	// Load rules for the first tme
-	if err := loadTenantAccessMap(k8sClient); err != nil {
+	kv, err := loadTenantAccessMap(k8sClient)
+	if err != nil {
 		log.Fatal(err)
 	}
+	globalTenantAccessMap.Update(kv)
 
 	// Start k8s informer
 	go runInformer(k8sClient)
