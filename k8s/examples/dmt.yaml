@@ -36,8 +36,8 @@ spec:
         type: dmt
       namespace: default
     spec:
-      serviceAccount: nginx-user
-      serviceAccountName: nginx-user
+      serviceAccount: dmt-user
+      serviceAccountName: dmt-user
       containers:
         - image: minio/dmt:dev
           imagePullPolicy: IfNotPresent
@@ -62,11 +62,11 @@ spec:
               - configMap:
                   name: dmt-config
               - secret:
-                  name: orchestrator-cluster-certs
+                  name: dmt-certs
                   items:
-                    - key: tls.crt
+                    - key: public.crt
                       path: tls.crt
-                    - key: tls.key
+                    - key: private.key
                       path: tls.key
                     - key: ca.crt
                       path: ca.crt
