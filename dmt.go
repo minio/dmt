@@ -146,7 +146,7 @@ func uponConfigUpdate(oldObj interface{}, newObj interface{}) {
 	}
 }
 
-func runInformer() error {
+func runInformer(k8sClient *kubernetes.Clientset) {
 	// We assume'dmt' is running inside a k8s pod and extract the
 	// current namespace from the /var/run/secrets/kubernetes.io/serviceaccount/namespace file
 	namespace := func() string {
@@ -156,16 +156,6 @@ func runInformer() error {
 		}
 		return string(ns)
 	}()
-
-	k8sConfig, err := k8srest.InClusterConfig()
-	if err != nil {
-		return err
-	}
-
-	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
-	if err != nil {
-		return err
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -182,14 +172,22 @@ func runInformer() error {
 
 	// wait for the initial synchronization of the local cache.
 	if !cache.WaitForCacheSync(ctx.Done(), cfgMapInformer.HasSynced) {
-		return fmt.Errorf("failed to sync")
+		panic(fmt.Errorf("failed to sync"))
 	}
 
 	<-ctx.Done()
-
-	return nil
 }
 
+// Secure Go implementations of modern TLS ciphers
+// The following ciphers are excluded because:
+//  - RC4 ciphers:              RC4 is broken
+//  - 3DES ciphers:             Because of the 64 bit blocksize of DES (Sweet32)
+//  - CBC-SHA256 ciphers:       No countermeasures against Lucky13 timing attack
+//  - CBC-SHA ciphers:          Legacy ciphers (SHA-1) and non-constant time
+//                              implementation of CBC.
+//                              (CBC-SHA ciphers can be enabled again if required)
+//  - RSA key exchange ciphers: Disabled because of dangerous PKCS1-v1.5 RSA
+//                              padding scheme. See Bleichenbacher attacks.
 var secureCipherSuites = []uint16{
 	tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 	tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
@@ -199,6 +197,7 @@ var secureCipherSuites = []uint16{
 	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 }
 
+// Go only provides constant-time implementations of Curve25519 and NIST P-256 curve.
 var secureCurves = []tls.CurveID{tls.X25519, tls.CurveP256}
 
 func main() {
@@ -211,8 +210,18 @@ func main() {
 		log.Fatal(err)
 	}
 
+	k8sConfig, err := k8srest.InClusterConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Start k8s informer
-	go runInformer()
+	go runInformer(k8sClient)
 
 	secureBackend := len(caCert) > 0
 
@@ -230,13 +239,13 @@ func main() {
 	}
 
 	transport := newInternodeHTTPTransport(&tls.Config{
-		RootCAs: rootCAs,
+		RootCAs:    rootCAs,
+		NextProtos: []string{"h2", "http/1.1"},
 		// TLS hardening
-		PreferServerCipherSuites: true,
 		MinVersion:               tls.VersionTLS12,
-		NextProtos:               []string{"h2", "http/1.1"},
 		CipherSuites:             secureCipherSuites,
 		CurvePreferences:         secureCurves,
+		PreferServerCipherSuites: true,
 	}, rest.DefaultTimeout)()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
