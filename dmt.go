@@ -128,14 +128,38 @@ func newInternodeHTTPTransport(tlsConfig *tls.Config, dialTimeout time.Duration)
 const (
 	dmtConfigMapName = "dmt-config"
 	dmtConfigMapKey  = "routes.json"
+
+	routeConfigVersion = "1"
 )
 
+// Current route configuration version '1'
+//
+// {
+//     "version": "1",
+//     "routes": {
+//         "0HHZW0BSUIK3TGCF": "backend-1:9000",
+//         "1OIGLFDMYMWIJCFV": "backend-2:9000",
+//         "2S2UPSUO4L4XMTU0": "backend-3:9000",
+//         "4103GYZD1OFNTL3Y": "backend-4:9000",
+//         "4QW2BNRBPGSUP24Z": "backend-5:9000"
+//     }
+// }
+type routeConfigV1 struct {
+	Version string            `json:"version"`
+	Routes  map[string]string `json:"routes"`
+}
+
 func loadConfiguration(rules string) (kv map[string]string, err error) {
-	kv = map[string]string{}
-	if err = json.Unmarshal([]byte(rules), &kv); err != nil {
+	var rcfg = routeConfigV1{}
+	if err = json.Unmarshal([]byte(rules), &rcfg); err != nil {
 		return nil, err
 	}
-	return kv, nil
+	switch rcfg.Version {
+	case routeConfigVersion:
+	default:
+		return nil, fmt.Errorf("unexpected routes config version %s", rcfg.Version)
+	}
+	return rcfg.Routes, nil
 }
 
 func uponConfigUpdate(oldObj interface{}, newObj interface{}) {

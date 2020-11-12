@@ -1,0 +1,10 @@
+{
+    "version": "1",
+    "routes": {
+        "0HHZW0BSUIK3TGCF": "backend-1:9000",
+        "1OIGLFDMYMWIJCFV": "backend-2:9000",
+        "2S2UPSUO4L4XMTU0": "backend-3:9000",
+        "4103GYZD1OFNTL3Y": "backend-4:9000",
+        "4QW2BNRBPGSUP24Z": "backend-5:9000"
+    }
+}
