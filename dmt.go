@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"path/filepath"
 	"time"
 
 	xhttp "github.com/minio/minio/cmd/http"
@@ -82,17 +83,15 @@ func ParsePublicCertFile(certFile string) (x509Certs []*x509.Certificate, err er
 }
 
 var (
-	caCert  string
-	tlsCert string
-	tlsKey  string
+	caCert string
+	tlsDir string
 
 	globalDNSCache        *xhttp.DNSCache
 	globalTenantAccessMap *tenantAccessMap
 )
 
 func init() {
-	flag.StringVar(&tlsKey, "tls-key", "/etc/dmt/tls.key", "TLS key")
-	flag.StringVar(&tlsCert, "tls-cert", "/etc/dmt/tls.crt", "TLS certificate")
+	flag.StringVar(&tlsDir, "tls-dir", "/etc/dmt/tls", "TLS certificate directories")
 	flag.StringVar(&caCert, "ca-cert", "/etc/dmt/ca.crt", "CA certificates")
 	globalDNSCache = xhttp.NewDNSCache(3*time.Second, 10*time.Second)
 	globalTenantAccessMap = newTenantAccessMap()
@@ -248,30 +247,72 @@ var secureCipherSuites = []uint16{
 // Go only provides constant-time implementations of Curve25519 and NIST P-256 curve.
 var secureCurves = []tls.CurveID{tls.X25519, tls.CurveP256}
 
+// dmt has support for multiple certificates. It expects the following structure:
+//  /etc/dmt/tls/
+//   ├─ example.com/
+//   │   │
+//   │   ├─ public.crt
+//   │   └─ private.key
+//   └─ foobar.org/
+//      │
+//      ├─ public.crt
+//      └─ private.key
+//   ...
+//
+// Therefore, we read all filenames in the cert directory and check
+// for each directory whether it contains a public.crt and private.key.
+// If so, we try to add it to certs in *http.Server* config.
+// NOTE: Directories just need to be named there is no requirement
+// on the right name or domain related to the certs.
+func loadTLSCerts(dirname string) ([]tls.Certificate, error) {
+	dirs, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		return nil, err
+	}
+	var certs []tls.Certificate
+	for _, dir := range dirs {
+		// Regular file types are all ignored.
+		if dir.IsDir() {
+			cert, err := tls.LoadX509KeyPair(filepath.Join(dirname, dir.Name(), "public.crt"),
+				filepath.Join(dirname, dir.Name(), "private.key"))
+			if err != nil {
+				return nil, err
+			}
+			certs = append(certs, cert)
+		}
+	}
+	return certs, nil
+}
+
 func main() {
 	flag.Parse()
 
 	defer globalDNSCache.Stop()
 
-	certs, err := ParsePublicCertFile(caCert)
+	certs, err := loadTLSCerts(tlsDir)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
+	}
+
+	caCerts, err := ParsePublicCertFile(caCert)
+	if err != nil {
+		log.Fatalln(err)
 	}
 
 	k8sConfig, err := k8srest.InClusterConfig()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 
 	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 
 	// Load rules for the first tme
 	kv, err := loadTenantAccessMap(k8sClient)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 	globalTenantAccessMap.Update(kv)
 
@@ -289,7 +330,7 @@ func main() {
 	}
 
 	// Add the global public crts as part of global root CAs
-	for _, publicCrt := range certs {
+	for _, publicCrt := range caCerts {
 		rootCAs.AddCert(publicCrt)
 	}
 
@@ -338,5 +379,19 @@ func main() {
 		proxy.ServeHTTP(w, r)
 	})
 
-	log.Fatal(http.ListenAndServeTLS(":8443", tlsCert, tlsKey, nil))
+	s := &http.Server{
+		Addr:           ":8443",
+		MaxHeaderBytes: 1 << 20,
+		TLSConfig: &tls.Config{
+			// TLS hardening
+			PreferServerCipherSuites: true,
+			MinVersion:               tls.VersionTLS12,
+			NextProtos:               []string{"h2", "http/1.1"},
+			Certificates:             certs,
+			CipherSuites:             secureCipherSuites,
+			CurvePreferences:         secureCurves,
+		},
+	}
+
+	log.Fatalln(s.ListenAndServeTLS("", ""))
 }

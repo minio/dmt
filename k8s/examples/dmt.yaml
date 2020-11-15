@@ -39,7 +39,7 @@ spec:
       serviceAccount: dmt-user
       serviceAccountName: dmt-user
       containers:
-        - image: minio/dmt:dev
+        - image: minio/dmt:latest
           imagePullPolicy: IfNotPresent
           name: dmt
           ports:
@@ -48,13 +48,25 @@ spec:
               protocol: TCP
           volumeMounts:
             - mountPath: /etc/dmt
+              name: dmt-configuration-ca-cert
+            - mountPath: /etc/dmt/tls/mydomain.com
               name: dmt-configuration-tls
+            - mountPath: /etc/dmt/tls/wildcard.com
+              name: dmt-configuration-wildcard-tls
       dnsPolicy: ClusterFirst
       nodeSelector:
         env: compute
       restartPolicy: Always
       schedulerName: default-scheduler
       volumes:
+        - name: dmt-ca-cert
+          projected:
+            defaultMode: 420
+            sources:
+              - secret: dmt-ca-cert
+                items:
+                  - key: ca.crt
+                    path: ca.crt
         - name: dmt-configuration-tls
           projected:
             defaultMode: 420
@@ -63,8 +75,18 @@ spec:
                   name: dmt-certs
                   items:
                     - key: public.crt
-                      path: tls.crt
+                      path: public.crt
                     - key: private.key
-                      path: tls.key
-                    - key: ca.crt
-                      path: ca.crt
+                      path: private.key
+        - name: dmt-configuration-wildcard-tls
+          projected:
+            defaultMode: 420
+            sources:
+              - secret:
+                  name: dmt-wildcard-certs
+                  items:
+                    - key: public.crt
+                      path: public.crt
+                    - key: private.key
+                      path: private.key
+
