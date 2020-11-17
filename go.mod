@@ -3,6 +3,8 @@ module github.com/minio/dmt
 go 1.14
 
 require (
+	github.com/gorilla/handlers v1.4.2
+	github.com/gorilla/mux v1.8.0
 	github.com/kr/text v0.2.0 // indirect
 	github.com/minio/minio v0.0.0-20201109180501-8e8ddf7233ed
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect

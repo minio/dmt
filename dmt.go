@@ -34,6 +34,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/rest"
 	"golang.org/x/net/http2"
@@ -287,6 +289,9 @@ func loadTLSCerts(dirname string) ([]tls.Certificate, error) {
 func main() {
 	flag.Parse()
 
+	// Set system to maximum resources possible
+	setMaxResources()
+
 	defer globalDNSCache.Stop()
 
 	certs, err := loadTLSCerts(tlsDir)
@@ -344,7 +349,8 @@ func main() {
 		PreferServerCipherSuites: true,
 	}, rest.DefaultTimeout)()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	r := mux.NewRouter()
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		accessKey, err := getReqAccessKey(r, "") // TODO support region
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -379,7 +385,9 @@ func main() {
 		proxy.ServeHTTP(w, r)
 	})
 
+	loggedRouter := handlers.CombinedLoggingHandler(os.Stdout, r)
 	s := &http.Server{
+		Handler:        loggedRouter,
 		Addr:           ":8443",
 		MaxHeaderBytes: 1 << 20,
 		TLSConfig: &tls.Config{
