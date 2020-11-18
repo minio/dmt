@@ -24,13 +24,17 @@ When deploying to `kubernetes`, `dmt` requires a configmap with the name `dmt-co
 
 ```$bash
 echo "{\"version\": \"1\", \"routes\": {}}" > routes.json
-kubectl creat cm dmt-config --from-file=routes.json
+kubectl create cm dmt-config --from-file=routes.json
 ```
 
 Additionally, `TLS` for `dmt` server is mandatory, make sure certificate secrets exists in the same namespace `dmt` is running, ie
 
 ```$bash
-kubectl create secret generic dmt-certs --from-file=public.crt --from-file=private.key --from-file=ca.crt
+kubectl create secret generic dmt-ca-cert --from-file=ca.crt
+```
+
+```$bash
+kubectl create secret generic certificate-secrets-domain-1 --from-file=tls.crt --from-file=tls.key
 ```
 
 Deploy `dmt`
