@@ -83,8 +83,10 @@ spec:
             - mountPath: /etc/dmt
               name: dmt-configuration-tls
       dnsPolicy: ClusterFirst
-      nodeSelector:
-        env: compute
+      # uncomment following nodeSelector if you have specific
+      # labels where dmt shall be deployed
+      # nodeSelector:
+      #   env: compute
       restartPolicy: Always
       schedulerName: default-scheduler
       volumes:
@@ -104,17 +106,18 @@ spec:
                       path: tls/my-domain-one.com/public.crt
                     - key: tls.key
                       path: tls/my-domain-one.com/private.key
-              - secret:
-                  name: certificate-secrets-domain-2
-                  items:
-                    - key: tls.crt
-                      path: tls/my-domain-two.com/public.crt
-                    - key: tls.key
-                      path: tls/my-domain-two.com/private.key
-              - secret:
-                  name: certificate-secrets-domain-3
-                  items:
-                    - key: tls.crt
-                      path: tls/my-domain-three.com/public.crt
-                    - key: tls.key
-                      path: tls/my-domain-three.com/private.key
+              # Enable to configure dmt with multiple TLS domain certs
+              # - secret:
+              #     name: certificate-secrets-domain-2
+              #     items:
+              #       - key: tls.crt
+              #         path: tls/my-domain-two.com/public.crt
+              #       - key: tls.key
+              #         path: tls/my-domain-two.com/private.key
+              # - secret:
+              #     name: certificate-secrets-domain-3
+              #     items:
+              #       - key: tls.crt
+              #         path: tls/my-domain-three.com/public.crt
+              #       - key: tls.key
+              #         path: tls/my-domain-three.com/private.key
